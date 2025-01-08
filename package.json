@@ -1,0 +1,10 @@
+{
+  "dependencies": {
+    "date-fns": "^4.1.0",
+    "date-utils": "^1.2.21",
+    "dayjs": "^1.11.13",
+    "discord.js": "^14.17.2",
+    "dotenv": "^16.4.7",
+    "moment": "^2.30.1"
+  }
+}
