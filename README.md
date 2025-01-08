@@ -1,5 +1,5 @@
 # Makomoyu
-Discord bot for Assemble and Disassemble 
+Discord bot for Nintendo Switch Cheat Assemble and Disassemble 
 
 # Credit
 ### cstool.exe [CapstoneEngine](https://www.capstone-engine.org/)
