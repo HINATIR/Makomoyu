@@ -5,7 +5,7 @@ const token = process.env.TOKEN
 const clientid = process.env.CLIENTID
 const fs = require("fs");
 const Discord = require("discord.js");
-const { ModalBuilder,TextInputBuilder,Client, PermissionsBitField,ActivityType , DMChannel,GatewayIntentBits, Partials ,ChannelType,EmbedBuilder,ActionRowBuilder,SlashCommandBuilder,SelectMenuBuilder,InteractionType,StringSelectMenuBuilder,StringSelectMenuOptionBuilder} = require('discord.js');
+const { MessageFlags,ModalBuilder,TextInputBuilder,Client, PermissionsBitField,ActivityType , DMChannel,GatewayIntentBits, Partials ,ChannelType,EmbedBuilder,ActionRowBuilder,SlashCommandBuilder,SelectMenuBuilder,InteractionType,StringSelectMenuBuilder,StringSelectMenuOptionBuilder} = require('discord.js');
 const client = new Discord.Client({intents: [
   Discord.GatewayIntentBits.DirectMessageReactions,
   Discord.GatewayIntentBits.DirectMessageTyping,
@@ -188,6 +188,36 @@ function ipsCoding(source, offset) {
   return code;
 }
 
+function removeEmptyLines(asm) {
+  return asm
+      .split("\n")
+      .filter(line => line.trim() !== "")
+      .join("\n")
+}
+
+function inputLabels(asm,offset) {
+  var lines = asm.split("\n")
+  var labels = []
+  var pos = []
+  for (let i in lines) {
+      var match = lines[i].match(/<=(.+)/)
+      if (match) {
+          var label = match[1].trim()
+          if (labels.includes(label)) {
+              throw `エラー: 同一のラベル '${label}' が複数存在します`
+          }
+          lines[i] = lines[i].split("<=")[0]
+          labels.push(label)
+          pos.push(`#0x${(parseInt(offset, 16) + 4 * i).toString(16).toUpperCase()}`)
+      }
+  }
+  var result = lines.join("\n")
+  for (let j in labels) {
+      result = result.replace(new RegExp(labels[j], 'g'), pos[j]);
+  }
+  return result
+}
+
 const assemble = new SlashCommandBuilder()
 .setName('assemble')
 .setDescription('arm64ソースをチートコードにします')
@@ -200,7 +230,15 @@ const asm2ips = new SlashCommandBuilder()
 .setName('ips_assemble')
 .setDescription('arm64ソースをipspatch形式します')
 
-const commands = [assemble,disassemble,asm2ips]
+const input_labels = new SlashCommandBuilder()
+.setName('input_labels')
+.setDescription('arm64ソースにラベルを反映させます')
+
+const how_to_label = new SlashCommandBuilder()
+.setName('how_to_label')
+.setDescription('ラベル記法の説明')
+
+const commands = [assemble,disassemble,asm2ips,input_labels,how_to_label]
 const { REST } = require('@discordjs/rest');
  const { Routes } = require('discord-api-types/v10');
 const rest = new REST({ version: '10' }).setToken(token)
@@ -277,7 +315,6 @@ client.on('interactionCreate', async (interaction,) => {
  			return interaction.showModal(modal);
     }
     if(interaction.commandName == 'disassemble'){
-
       const modal = new ModalBuilder()
  				.setTitle("Edizonチートコードからアセンブラソースに")
  				.setCustomId("disassemble");
@@ -285,7 +322,42 @@ client.on('interactionCreate', async (interaction,) => {
       modal.setComponents(SourceActionRow);
  			return interaction.showModal(modal);
     }
+    if(interaction.commandName == 'input_labels'){
+      const modal = new ModalBuilder()
+ 				.setTitle("アセンブラソースに独自記法のラベルを反映")
+ 				.setCustomId("input_labels");
+      const SourceActionRow = new ActionRowBuilder().setComponents(ARMSourceInput);
+      modal.setComponents(OffsetActionRow,SourceActionRow);
+ 			return interaction.showModal(modal);
+    }
+    if(interaction.commandName == 'how_to_label'){
+      var howto = `
+# ラベルを用いた分岐記述
+元来の分岐記述方法
+\`\`\`assembly
+0x0:
+    CMP X0, X1
+    B.LE #0xC
+    LDR X0, [X8,#0x810]
+    RET
+\`\`\`
 
+ラベルを用いた記述
+\`\`\`assembly
+0x0:
+    CMP X0, X1
+    B.LE _SKIP
+    LDR X0, [X8,#0x810]
+    RET <= _SKIP
+\`\`\`
+
+### 記述ルール:
+少なくとも**他のアセンブラ命令に含まれる文字列が含まれてはいけない**ため、_等を用いることを推奨する。
+**分岐先は<= {ラベル}で指定**する。分岐元は複数存在して構わないが、分岐先が複数見られる場合、エラーとなる。
+_SKIPと_SKIP1のように、他のラベル名が含まれるようなラベル名はうまく書き換えできない。`
+      interaction.reply({ content: howto, flags: MessageFlags.Ephemeral})
+
+    }
   }
 })
 
@@ -305,7 +377,7 @@ client.on('interactionCreate', async (interaction) => {
           .setTitle(`0x${startaddress}`)
           .setDescription(`${result}`)
           .setColor(31415); 
-        interaction.reply({embeds : [embed]})
+        interaction.reply({embeds : [embed], flags: MessageFlags.Ephemeral})
         console.log(`${getCurrentTimeStamp()} [Disassemble] \u001b[32m${interaction.user.displayName}\u001b[0m [${interaction.user.id}] が使用`);
 
       } catch (error) {
@@ -320,15 +392,16 @@ client.on('interactionCreate', async (interaction) => {
     }
     if (interaction.customId == "assemble"){
       var source = interaction.fields.getTextInputValue('armsource')
-      var asmsource = removeComment(source).replace(/[\r\n]+/g, '\n')
-      var instructions = asmsource.split("\n")
-      var startaddress = parseInt(interaction.fields.getTextInputValue('offset'), 16)
       try {
+        var startaddress = parseInt(interaction.fields.getTextInputValue('offset'), 16)
         var errors = ["文法ミス:"]
 
         if(startaddress % 4 != 0){
           errors.push(`アドレスの値が不正 : 0x${startaddress.toString(16)}`)
         }
+        var asmsource = removeComment(removeEmptyLines(source)).replace(/[\r\n]+/g, '\n')
+        asmsource = inputLabels(asmsource,startaddress.toString(16))
+        var instructions = asmsource.split("\n")
 
         var results = []
         for (let i = 0; i < instructions.length; i++) {
@@ -356,21 +429,22 @@ client.on('interactionCreate', async (interaction) => {
           .setTitle(`⚠️エラー`)
           .setDescription(error)
           .setColor(16711680); 
-        interaction.reply({embeds : [embed]})
+        interaction.reply({embeds : [embed], flags: MessageFlags.Ephemeral})
       }
       
     }
     if (interaction.customId == "ips_assemble"){
       var source = interaction.fields.getTextInputValue('armsource')
-      var asmsource = removeComment(source).replace(/[\r\n]+/g, '\n')
-      var instructions = asmsource.split("\n")
-      var startaddress = parseInt(interaction.fields.getTextInputValue('offset'), 16)
       try {
+        var startaddress = parseInt(interaction.fields.getTextInputValue('offset'), 16)
         var errors = ["文法ミス:"]
 
         if(startaddress % 4 != 0){
           errors.push(`アドレスの値が不正 : 0x${startaddress.toString(16)}`)
         }
+        var asmsource = removeComment(source).replace(/[\r\n]+/g, '\n')
+        asmsource = inputLabels(asmsource,startaddress.toString(16))
+        var instructions = asmsource.split("\n")
 
         var results = []
         for (let i = 0; i < instructions.length; i++) {
@@ -391,7 +465,7 @@ client.on('interactionCreate', async (interaction) => {
           .setTitle(`出力:`)
           .setDescription(ipsCoding(assembled,startaddress.toString(16)))
           .setColor(31415); 
-        interaction.reply({embeds : [embed]})
+        interaction.reply({embeds : [embed], flags: MessageFlags.Ephemeral})
         console.log(`${getCurrentTimeStamp()} [IPS-Aassemble] \u001b[32m${interaction.user.displayName}\u001b[0m [${interaction.user.id}] が使用`);
       } catch (error) {
         const embed = new EmbedBuilder()
@@ -401,6 +475,35 @@ client.on('interactionCreate', async (interaction) => {
         interaction.reply({embeds : [embed]})
       }
       
+    }
+    if (interaction.customId == "input_labels"){
+      var source = interaction.fields.getTextInputValue('armsource')
+      try {
+        var startaddress = parseInt(interaction.fields.getTextInputValue('offset'), 16)
+        var errors = ["文法ミス:"]
+
+        if(startaddress % 4 != 0){
+          errors.push(`アドレスの値が不正 : 0x${startaddress.toString(16)}`)
+        }
+        var asmsource = removeComment(removeEmptyLines(source)).replace(/[\r\n]+/g, '\n')
+        asmsource = inputLabels(asmsource,startaddress.toString(16))
+
+        if(errors.length > 1){
+          throw errors.join("\n")
+        }
+        const embed = new EmbedBuilder()
+          .setTitle(`0x${startaddress.toString(16)}:`)
+          .setDescription(asmsource)
+          .setColor(31415); 
+        interaction.reply({embeds : [embed]})
+        console.log(`${getCurrentTimeStamp()} [Input_Labels] \u001b[32m${interaction.user.displayName}\u001b[0m [${interaction.user.id}] が使用`);
+      } catch (error) {
+        const embed = new EmbedBuilder()
+          .setTitle(`⚠️エラー`)
+          .setDescription(error)
+          .setColor(16711680); 
+        interaction.reply({embeds : [embed], flags: MessageFlags.Ephemeral})
+      }
     }
 });
 
