@@ -169,7 +169,6 @@ function cheatCoding(binarysource, offset) {
 }
 
 function ipsCoding(source, offset) {
-  // 引数の16進数文字列を改行で分割して配列化
   var lines = source.split('\n');
   let code = ""
   let i = 0
@@ -202,13 +201,15 @@ function inputLabels(asm,offset) {
   for (let i in lines) {
       var match = lines[i].match(/<=(.+)/)
       if (match) {
-          var label = match[1].trim()
-          if (labels.includes(label)) {
-              throw `エラー: 同一のラベル '${label}' が複数存在します`
+        var label = match[1].trim()
+        for (let i = 0; i < labels.length; i++) {
+          if (labels[i].includes(label)||label.includes(labels[i])) {
+            throw `ラベルミス: 同名か似た名前のラベル '${label}' が複数存在します`
           }
-          lines[i] = lines[i].split("<=")[0]
-          labels.push(label)
-          pos.push(`#0x${(parseInt(offset, 16) + 4 * i).toString(16).toUpperCase()}`)
+        }
+        lines[i] = lines[i].split("<=")[0]
+        labels.push(label)
+        pos.push(`#0x${(parseInt(offset, 16) + 4 * i).toString(16).toUpperCase()}`)
       }
   }
   var result = lines.join("\n")
@@ -385,7 +386,7 @@ client.on('interactionCreate', async (interaction) => {
           .setTitle(`⚠️エラー`)
           .setDescription(error)
           .setColor(16711680); 
-        interaction.reply({embeds : [embed]})
+        interaction.reply({embeds : [embed], flags: MessageFlags.Ephemeral})
         logError(`[Assemble] ${error}`)
 
       }
@@ -422,7 +423,7 @@ client.on('interactionCreate', async (interaction) => {
           .setTitle(`出力:`)
           .setDescription(cheatCoding(assembled,startaddress.toString(16)))
           .setColor(31415); 
-        interaction.reply({embeds : [embed]})
+        interaction.reply({embeds : [embed], flags: MessageFlags.Ephemeral})
         console.log(`${getCurrentTimeStamp()} [Aassemble] \u001b[32m${interaction.user.displayName}\u001b[0m [${interaction.user.id}] が使用`);
       } catch (error) {
         const embed = new EmbedBuilder()
@@ -472,7 +473,7 @@ client.on('interactionCreate', async (interaction) => {
           .setTitle(`⚠️エラー`)
           .setDescription(error)
           .setColor(16711680); 
-        interaction.reply({embeds : [embed]})
+        interaction.reply({embeds : [embed], flags: MessageFlags.Ephemeral})
       }
       
     }
@@ -495,7 +496,7 @@ client.on('interactionCreate', async (interaction) => {
           .setTitle(`0x${startaddress.toString(16)}:`)
           .setDescription(asmsource)
           .setColor(31415); 
-        interaction.reply({embeds : [embed]})
+        interaction.reply({embeds : [embed], flags: MessageFlags.Ephemeral})
         console.log(`${getCurrentTimeStamp()} [Input_Labels] \u001b[32m${interaction.user.displayName}\u001b[0m [${interaction.user.id}] が使用`);
       } catch (error) {
         const embed = new EmbedBuilder()
