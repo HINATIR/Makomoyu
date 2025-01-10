@@ -95,3 +95,6 @@ RET
 ### cstool.exe [CapstoneEngine](https://www.capstone-engine.org/)
 ### kstool.exe [KeyStoneEngine](https://www.keystone-engine.org/)
 ### Coding [ChatGPT](https://chatgpt.com/)
+
+![kakusei](https://github.com/user-attachments/assets/ac911dae-c534-4ba0-a619-97c11c608f31)
+
